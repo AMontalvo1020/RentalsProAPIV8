@@ -1,6 +1,8 @@
-﻿using Asp.Versioning;
+﻿using System;
+using Asp.Versioning;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using RentalsProAPIV8.Client.Constants;
 using RentalsProAPIV8.Client.DataTransferObjects;
 using RentalsProAPIV8.Core.Extensions;
@@ -22,14 +24,10 @@ namespace RentalsProAPIV8.V1.Controllers
         {
             var unitDTO = await _unitOfWork.UnitRepo.GetUnitDTO(UnitID);
 
-            if (unitDTO is null)
-            {
+            if (unitDTO == null)
                 return NotFound(new UnitDTO());
-            }
-            else
-            {
-                return Ok(unitDTO);
-            }
+
+            return Ok(unitDTO);
         }
 
         [HttpGet("GetUnits")]
@@ -37,24 +35,20 @@ namespace RentalsProAPIV8.V1.Controllers
         {
             var unitDTOs = await _unitOfWork.UnitRepo.GetUnitDTOs(PropertyID, Active);
 
-            if (unitDTOs is null || unitDTOs.Count == 0)
-            {
+            if (unitDTOs == null || !unitDTOs.Any())
                 return NotFound(new List<UnitDTO>());
-            }
-            else
-            {
-                return Ok(unitDTOs);
-            }
+
+            return Ok(unitDTOs);
         }
 
         [HttpPatch("PatchUnitStatus")]
         public async Task<IActionResult> PatchUnitStatus(int UnitID, int StatusID)
         {
             var updated = await _unitOfWork.UnitRepo.PatchStatusAsync(UnitID, StatusID);
-            // Check if additional processing is required for specific status IDs
+
+            // Additional processing for specific statuses
             if (StatusID == (int)Enums.PropertyStatus.Vacant || StatusID == (int)Enums.PropertyStatus.MoveOut)
             {
-                // Update lease and user status concurrently
                 var lease = await _unitOfWork.LeaseRepo.GetLease(null, UnitID);
                 if (lease != null)
                 {

@@ -61,15 +61,25 @@ namespace RentalsProAPIV8.Client.API
             return await ExecutePostResponseAsync<LeaseDTO>(Paths.PostForLeaseUri(_apiUrl), parameters);
         }
 
-        public static async Task<ApiResponse<HttpStatusCode>> UpdateLeaseAsync(LeaseDTO leaseDTO)
+        public static async Task<ApiResponse<string>> UpdateLeaseAsync(LeaseDTO leaseDTO)
         {
-            return await ExecutePutResponseAsync<HttpStatusCode>(Paths.UpdateLeaseUri(_apiUrl), leaseDTO);
+            return await ExecutePutResponseAsync<string>(Paths.UpdateLeaseUri(_apiUrl), leaseDTO);
         }
 
-        public static async Task<ApiResponse<bool>> PostLeaseAsync(LeaseDTO parameters)
+        //public static async Task<ApiResponse<HttpStatusCode>> UpdateLeaseAsync(LeaseDTO leaseDTO)
+        //{
+        //    return await ExecutePutResponseAsync<HttpStatusCode>(Paths.UpdateLeaseUri(_apiUrl), leaseDTO);
+        //}
+
+        public static async Task<ApiResponse<string>> PostLeaseAsync(LeaseDTO parameters)
         {
-            return await ExecutePostResponseAsync<bool>(Paths.PostLeaseUri(_apiUrl), parameters);
+            return await ExecutePostResponseAsync<string>(Paths.PostLeaseUri(_apiUrl), parameters);
         }
+
+        //public static async Task<ApiResponse<bool>> PostLeaseAsync(LeaseDTO parameters)
+        //{
+        //    return await ExecutePostResponseAsync<bool>(Paths.PostLeaseUri(_apiUrl), parameters);
+        //}
 
         // Type-related methods
         public static async Task<ApiResponse<List<TypeDTO>>> GetPropertyTypesAsync()

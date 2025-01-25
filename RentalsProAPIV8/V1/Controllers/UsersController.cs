@@ -27,23 +27,22 @@ namespace RentalsProAPIV8.V1.Controllers
         [HttpPut("UpdateUser")]
         public async Task<IActionResult> UpdateUser([FromBody] UserDTO userDTO)
         {
+            if (userDTO == null)
+                return BadRequest(new { Message = "Invalid user data." });
+
             await _unitOfWork.UserRepo.UpdateUser(userDTO);
-            return Ok(true);
+            return Ok(new { Message = "User updated successfully." });
         }
 
         [HttpPost("PostForValidUser")]
         public async Task<IActionResult> PostForValidUser([FromBody] ValidUserParameters parameters)
         {
             if (parameters == null)
-            {
-                return BadRequest("Invalid parameters.");
-            }
+                return BadRequest(new UserDTO());
 
             var userDTO = await _unitOfWork.UserRepo.GetUserDTO(parameters.Username);
             if (userDTO == null || !ValidatePassword(userDTO, parameters.Password))
-            {
-                return Unauthorized("Invalid username or password.");
-            }
+                return Unauthorized(new UserDTO());
 
             return Ok(userDTO);
         }
@@ -51,16 +50,12 @@ namespace RentalsProAPIV8.V1.Controllers
         [HttpPost("PostForUsers")]
         public async Task<IActionResult> PostForUsers([FromBody] PostForUserParameters parameters)
         {
-            if (parameters is null)
-            {
-                return BadRequest($"Invalid {nameof(parameters)}");
-            }
+            if (parameters == null)
+                return BadRequest(new List<UserDTO>());
 
             var userDTOs = await _unitOfWork.UserRepo.GetUsersAsync(parameters);
             if (userDTOs == null || userDTOs.Count == 0)
-            {
-                return BadRequest(new List<UserDTO>());
-            }
+                return NotFound(new List<UserDTO>());
 
             return Ok(userDTOs);
         }
@@ -69,11 +64,15 @@ namespace RentalsProAPIV8.V1.Controllers
         {
             ValidatePreconditions(user, attemptedPassword);
 
-            if (string.IsNullOrEmpty(user.PasswordHash) || string.IsNullOrEmpty(user.PasswordSalt))
+            if (user.PasswordHash.IsEmpty() || user.PasswordSalt.IsEmpty())
                 throw new ArgumentException("Stored password hash or salt is invalid.");
 
             var attemptedHash = Hashing.ComputeHash(attemptedPassword, user.PasswordSalt, HashAlgorithmType.PBKDF2);
-            return CryptographicOperations.FixedTimeEquals(Convert.FromBase64String(attemptedHash), Convert.FromBase64String(user.PasswordHash));
+
+            return CryptographicOperations.FixedTimeEquals(
+                Convert.FromBase64String(attemptedHash),
+                Convert.FromBase64String(user.PasswordHash)
+            );
         }
 
         private static void ValidatePreconditions(UserDTO user, string attemptedPassword)

@@ -1,4 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.Maui.Controls;
+using RentalsProAPIV8.Maui.ViewModels;
 
 namespace RentalsProAPIV7.Maui.Extensions
 {
@@ -8,11 +10,41 @@ namespace RentalsProAPIV7.Maui.Extensions
         {
             if (tabbedPage == null) throw new ArgumentNullException(nameof(tabbedPage));
 
-            var page = Activator.CreateInstance(typeof(TPage), parameters) as TPage
-                ?? throw new InvalidOperationException($"Could not create an instance of {typeof(TPage)}.");
+            var page = Activator.CreateInstance(typeof(TPage), parameters) as TPage;
+            // Attach the Appearing event
+            page.Appearing += async (_, _) =>
+            {
+                // Initialize the ViewModel
+                var viewModel = Activator.CreateInstance(typeof(TViewModel), parameters) as TViewModel;
+                page.BindingContext = viewModel;
 
-            page.OnAppearing((_, _) => page.BindingContext = Activator.CreateInstance(typeof(TViewModel), parameters));
-            page.OnDisappearing((_, _) => page.BindingContext = null);
+                // Initialize ViewModel if it supports InitializeAsyncCommand
+                if (viewModel is IViewModelBase { InitializeAsyncCommand: { } } baseViewModel)
+                {
+                    await baseViewModel.InitializeAsyncCommand.ExecuteAsync(null);
+                }
+            };
+
+            // Attach the Disappearing event
+            page.Disappearing += (_, _) =>
+            {
+                try
+                {
+                    // Dispose of the ViewModel if it implements IDisposable
+                    if (page.BindingContext is IDisposable disposableViewModel)
+                    {
+                        disposableViewModel.Dispose();
+                    }
+                }
+                finally
+                {
+                    // Clear the BindingContext
+                    page.BindingContext = null;
+                }
+            };
+
+            //page.OnAppearing((_, _) => page.BindingContext = Activator.CreateInstance(typeof(TViewModel), parameters));
+            //page.OnDisappearing((_, _) => page.BindingContext = null);
 
             tabbedPage.Children.Add(page);
         }

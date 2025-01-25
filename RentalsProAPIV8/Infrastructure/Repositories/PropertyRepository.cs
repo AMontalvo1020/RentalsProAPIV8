@@ -24,10 +24,6 @@ namespace RentalsProAPIV8.Infrastructure.Repositories
 
         public async Task<List<PropertyDTO>> GetPropertyDTOsAsync(PostForPropertiesParameters parms)
         {
-            //// Convert filters to HashSet for O(1) lookup
-            var statusFilter = parms.Status?.ToHashSet();
-            var typeFilter = parms.Type?.ToHashSet();
-
             var query = _context.Properties.AsNoTracking();
 
             // Apply filters conditionally
@@ -35,14 +31,14 @@ namespace RentalsProAPIV8.Infrastructure.Repositories
                 query = query.Where(p => p.OwnerID == parms.UserID.Value);
             if (parms.CompanyID.HasValue)
                 query = query.Where(p => p.CompanyID == parms.CompanyID.Value);
-            if (!string.IsNullOrWhiteSpace(parms.Address))
+            if (!parms.Address.IsEmpty())
                 query = query.Where(p => EF.Functions.Like(p.Address, $"%{parms.Address}%"));
             if (parms.PaymentStatus.HasValue)
                 query = query.Where(p => p.PaymentStatusID == parms.PaymentStatus.Value);
-            if (statusFilter != null && statusFilter.Count > 0)
-                query = query.Where(p => statusFilter.Contains(p.StatusID));
-            if (typeFilter != null && typeFilter.Count > 0)
-                query = query.Where(p => typeFilter.Contains(p.TypeID));
+            if (parms.Status?.Any() == true)
+                query = query.Where(p => parms.Status.Contains(p.StatusID));
+            if (parms.Type?.Any() == true)
+                query = query.Where(p => parms.Type.Contains(p.TypeID));
 
             // Project directly to DTO to minimize data loading
             return await query.Select(MapToPropertyDTO)

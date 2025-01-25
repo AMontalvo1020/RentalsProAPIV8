@@ -19,28 +19,20 @@ namespace RentalsProAPIV8.V1.Controllers
         public PropertiesController(IConfiguration configuration, IUnitOfWork unitOfWork) : base(configuration, unitOfWork) { }
 
         [HttpGet("GetProperty")]
-        public async Task<IActionResult> GetProperty(int PropertyID)
+        public async Task<IActionResult> GetProperty(int propertyID)
         {
-            var propertyDTO = await _unitOfWork.PropertyRepo.GetPropertyDTOAsync(PropertyID);
-            if (propertyDTO is null)
-            {
+            var propertyDTO = await _unitOfWork.PropertyRepo.GetPropertyDTOAsync(propertyID);
+            if (propertyDTO == null)
                 return NotFound(new { Message = "Property not found." });
-            }
-            else
-            {
-                if (propertyDTO.OwnerID.HasValue)
-                {
-                    propertyDTO.Owner = await _unitOfWork.UserRepo.GetUserDTO(propertyDTO.OwnerID.Value);
-                }
-                if (propertyDTO.CompanyID.HasValue)
-                {
-                    propertyDTO.Company = await _unitOfWork.CompanyRepo.GetCompanyDTO(propertyDTO.CompanyID.Value);
-                }
-                if (propertyDTO.TypeID == (int)Enums.PropertyType.Commercial)
-                {
-                    propertyDTO.Units = await _unitOfWork.UnitRepo.GetUnitDTOs(propertyDTO.ID.Value);
-                }
-            }
+
+            if (propertyDTO.OwnerID.HasValue)
+                propertyDTO.Owner = await _unitOfWork.UserRepo.GetUserDTO(propertyDTO.OwnerID.Value);
+
+            if (propertyDTO.CompanyID.HasValue)
+                propertyDTO.Company = await _unitOfWork.CompanyRepo.GetCompanyDTO(propertyDTO.CompanyID.Value);
+
+            if (propertyDTO.TypeID == (int)Enums.PropertyType.Commercial)
+                propertyDTO.Units = await _unitOfWork.UnitRepo.GetUnitDTOs(propertyDTO.ID.Value);
 
             return Ok(propertyDTO);
         }
@@ -49,12 +41,11 @@ namespace RentalsProAPIV8.V1.Controllers
         public async Task<IActionResult> UpdateProperty([FromBody] PropertyDTO propertyDTO)
         {
             if (propertyDTO?.ID == null)
-            {
                 return BadRequest("Invalid property data.");
-            }
 
             var updated = await _unitOfWork.PropertyRepo.UpdatePropertyAsync(propertyDTO);
-            return Ok(updated.ToString());
+            return updated > 0 ? Ok(new { Message = "Property updated successfully." })
+                               : StatusCode(500, "Failed to update the property.");
         }
 
         [HttpPatch("PatchPropertyStatus")]
@@ -72,9 +63,10 @@ namespace RentalsProAPIV8.V1.Controllers
                 var lease = await _unitOfWork.LeaseRepo.GetLease(PropertyID, null);
                 if (lease != null)
                 {
-                    // Run lease status and user status update concurrently
-                    await _unitOfWork.LeaseRepo.PatchLeaseStatus(PropertyID, null, false);
-                    await _unitOfWork.UserRepo.BatchUpdateUserStatus(lease.ID, false);
+                    await Task.WhenAll(
+                        _unitOfWork.LeaseRepo.PatchLeaseStatus(PropertyID, null, false),
+                        _unitOfWork.UserRepo.BatchUpdateUserStatus(lease.ID, false)
+                    );
                 }
             }
 
@@ -88,19 +80,14 @@ namespace RentalsProAPIV8.V1.Controllers
             return Ok(updated.ToString());
         }
 
-        //[HttpPost("PostToDeleteProperty")]
-        //public async Task<IActionResult> PostToDeleteProperty(int PropertyID)
-        //{
-
-        //}
-
         [HttpPost("PostForProperties")]
         public async Task<IActionResult> PostForProperties([FromBody] PostForPropertiesParameters parameters)
         {
             var properties = await _unitOfWork.PropertyRepo.GetPropertyDTOsAsync(parameters);
-            var units = await _unitOfWork.UnitRepo.GetUnitDTOs(properties.Select(p => p.ID.Value).ToList());
+            var unitIDs = properties.Select(p => p.ID.Value).ToList();
+            var units = await _unitOfWork.UnitRepo.GetUnitDTOs(unitIDs);
 
-            Parallel.ForEach(properties, p =>
+            properties.ForEach(p =>
             {
                 p.Units = units.Where(u => u.PropertyID == p.ID).ToList();
             });
@@ -111,38 +98,33 @@ namespace RentalsProAPIV8.V1.Controllers
         [HttpPost("PostProperty")]
         public async Task<IActionResult> PostProperty([FromBody] PropertyDTO PropertyDTO)
         {
-            if (PropertyDTO == null) return BadRequest("Invalid property data.");
+            if (PropertyDTO == null)
+                return BadRequest("Invalid property data.");
 
-            // Check for existing property by address
-            if (await _unitOfWork.PropertyRepo.GetPropertyByAddressAsync(PropertyDTO.Address.Address) != null)
+            var existingProperty = await _unitOfWork.PropertyRepo.GetPropertyByAddressAsync(PropertyDTO.Address.Address);
+            if (existingProperty != null)
+                return Conflict(new { Message = "A property with this address already exists." });
+
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
+            try
             {
-                return Conflict("A property with this address already exists.");
+                var newProperty = MapToProperty(PropertyDTO);
+                await _unitOfWork.PropertyRepo.AddAsync(newProperty);
+
+                if (PropertyDTO.Units?.Any() == true)
+                {
+                    PropertyDTO.Units.ForEach(unit => unit.PropertyID = newProperty.ID);
+                    await _unitOfWork.UnitRepo.PostUnits(PropertyDTO.Units);
+                }
+
+                await _unitOfWork.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return Ok(new { Message = "Property created successfully." });
             }
-
-            using (var transaction = await _unitOfWork.BeginTransactionAsync())
+            catch (Exception ex)
             {
-                try
-                {
-                    // Map DTO to property entity and save it
-                    var newProperty = MapToProperty(PropertyDTO);
-                    await _unitOfWork.PropertyRepo.AddAsync(newProperty);
-
-                    // Insert associated units, if any
-                    if (PropertyDTO.Units?.Any() == true)
-                    {
-                        PropertyDTO.Units.ForEach(unit => unit.PropertyID = newProperty.ID);
-                        await _unitOfWork.UnitRepo.PostUnits(PropertyDTO.Units);
-                        await _unitOfWork.SaveChangesAsync();
-                    }
-
-                    await transaction.CommitAsync();
-                    return Ok();
-                }
-                catch (Exception ex)
-                {
-                    await transaction.RollbackAsync();
-                    return StatusCode(500, "An error occurred while saving the property: " + ex.Message);
-                }
+                await transaction.RollbackAsync();
+                return StatusCode(500, new { Message = $"An error occurred: {ex.Message}" });
             }
         }
 
